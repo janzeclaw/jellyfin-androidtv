@@ -1,0 +1,53 @@
+name: Build Jellyfin Android TV for API 19
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    
+    steps:
+    - name: Checkout code (v0.11.7)
+      uses: actions/checkout@v4
+      with:
+        ref: 'refs/tags/v0.11.7'
+        submodules: 'recursive'
+    
+    - name: Set up JDK 8
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '8'
+    
+    - name: Install Android SDK
+      run: |
+        export ANDROID_HOME=/usr/local/android-sdk
+        mkdir -p $ANDROID_HOME
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O /tmp/cmdline-tools.zip
+        unzip -q /tmp/cmdline-tools.zip -d $ANDROID_HOME
+        mv $ANDROID_HOME/cmdline-tools $ANDROID_HOME/latest
+        yes | $ANDROID_HOME/latest/bin/sdkmanager --licenses
+        $ANDROID_HOME/latest/bin/sdkmanager "platforms;android-19" "build-tools;19.1.0"
+    
+    - name: Modify build.gradle for API 19
+      run: |
+        cd app
+        sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 19/' build.gradle
+        sed -i 's/buildToolsVersion ".*"/buildToolsVersion "19.1.0"/' build.gradle
+        sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 19/' build.gradle
+        sed -i 's/minSdkVersion [0-9]*/minSdkVersion 19/' build.gradle
+        sed -i 's/com.android.support:leanback-v17:22.1.1/com.android.support:leanback-v17:22.0.0/' build.gradle || true
+        cd ..
+    
+    - name: Build APK
+      run: |
+        chmod +x gradlew
+        ./gradlew clean assembleDebug --stacktrace 2>&1 | tail -100
+    
+    - name: Upload APK
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: jellyfin-api19
+        path: app/build/outputs/apk/debug/*.apk
